@@ -231,6 +231,59 @@ export function getLatestSuccessfulRun(repositoryId: string): JobRunRecord | nul
   return (row as JobRunRecord) ?? null;
 }
 
+export interface JobStatusCounts {
+  queued: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  total: number;
+}
+
+export function getJobStatusCounts(): JobStatusCounts {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT status, COUNT(*) as count
+       FROM jobs
+       GROUP BY status`
+    )
+    .all() as Array<{ status: JobStatus; count: number }>;
+
+  const counts: JobStatusCounts = {
+    queued: 0,
+    running: 0,
+    succeeded: 0,
+    failed: 0,
+    total: 0
+  };
+
+  for (const row of rows) {
+    counts[row.status] += row.count;
+    counts.total += row.count;
+  }
+
+  return counts;
+}
+
+export interface RecentJobRunRecord extends JobRunRecord {
+  repository_id: string;
+}
+
+export function listRecentRuns(limit = 20): RecentJobRunRecord[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT jr.*, j.repository_id
+       FROM job_runs jr
+       JOIN jobs j ON j.id = jr.job_id
+       ORDER BY jr.started_at DESC
+       LIMIT ?`
+    )
+    .all(limit) as RecentJobRunRecord[];
+
+  return rows;
+}
+
 export function hasRecentSuccessfulRun(repositoryId: string, maxAgeMs: number): boolean {
   const latest = getLatestSuccessfulRun(repositoryId);
   if (!latest || !latest.completed_at) {
