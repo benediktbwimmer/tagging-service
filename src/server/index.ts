@@ -5,7 +5,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import websocketPlugin from '@fastify/websocket';
 import type { SocketStream } from '@fastify/websocket';
-import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
+import { jsonSchemaTransform, serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { getConfig } from '../config';
 import { logger } from '../lib/logger';
@@ -128,7 +128,8 @@ async function main(): Promise<void> {
         description: 'HTTP interface for the tagging service job queue',
         version: '0.1.0'
       }
-    }
+    },
+    transform: jsonSchemaTransform
   });
   await app.register(swaggerUi, {
     routePrefix: '/docs',
