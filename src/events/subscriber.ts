@@ -6,17 +6,45 @@ import { hasRecentSuccessfulRun } from '../db/jobStore';
 import { TaggingJobData } from '../jobs/types';
 import { taggingJobId } from '../queue';
 
-interface RepositoryEventPayload {
-  repository: {
-    id: string;
-    ingestStatus?: string;
-  };
+interface RepositoryShape {
+  id?: string;
+  ingestStatus?: string;
   [key: string]: unknown;
 }
 
-interface IncomingEvent {
-  event: string;
-  payload: RepositoryEventPayload;
+interface LegacyIncomingEvent {
+  event?: string;
+  payload?: {
+    repository?: RepositoryShape;
+    [key: string]: unknown;
+  };
+}
+
+interface EnvelopeIncomingEvent {
+  origin?: string;
+  event?: {
+    type?: string;
+    data?: {
+      repository?: RepositoryShape;
+      repositoryId?: string;
+      ingestStatus?: string;
+      event?: {
+        repositoryId?: string;
+        status?: string;
+        [key: string]: unknown;
+      };
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+}
+
+type IncomingEvent = LegacyIncomingEvent | EnvelopeIncomingEvent;
+
+interface NormalizedEvent {
+  eventName: string;
+  repositoryId: string;
+  ingestStatus?: string;
 }
 
 const RECENCY_WINDOW_MS = 1000 * 60 * 60 * 12; // 12 hours
@@ -72,35 +100,88 @@ export class EventSubscriber {
       return;
     }
 
-    if (!parsed?.event?.startsWith('repository.')) {
+    const normalized = this.normalizeEvent(parsed);
+    if (!normalized) {
       return;
     }
-    if (!parsed.payload?.repository?.id) {
-      return;
-    }
-    const { repository } = parsed.payload;
+
+    const { eventName, repositoryId, ingestStatus } = normalized;
 
     try {
       await this.repositoryListener?.({
-        eventName: parsed.event,
-        repositoryId: repository.id,
-        ingestStatus: repository.ingestStatus
+        eventName,
+        repositoryId,
+        ingestStatus
       });
     } catch (error) {
       logger.warn({ error }, 'Repository event listener failed');
     }
 
-    if (parsed.event === 'repository.updated' || parsed.event === 'repository.ingestion-event') {
-      if (repository.ingestStatus !== 'ready') {
+    if (eventName === 'repository.updated' || eventName === 'repository.ingestion-event') {
+      if (ingestStatus !== 'ready') {
         return;
       }
-      const repoId = repository.id;
+      const repoId = repositoryId;
       if (hasRecentSuccessfulRun(repoId, RECENCY_WINDOW_MS)) {
         logger.debug({ repoId }, 'Skipping event because repository was tagged recently');
         return;
       }
       await this.enqueueTaggingJob({ repositoryId: repoId, trigger: 'event' });
     }
+  }
+
+  private normalizeEvent(parsed: IncomingEvent): NormalizedEvent | null {
+    let eventName: string | undefined;
+    let repositoryId: string | undefined;
+    let ingestStatus: string | undefined;
+
+    if (typeof parsed?.event === 'string') {
+      eventName = parsed.event;
+      const payload = (parsed as LegacyIncomingEvent).payload;
+      repositoryId = payload?.repository?.id;
+      ingestStatus = payload?.repository?.ingestStatus;
+    } else if (parsed && typeof parsed === 'object' && parsed.event && typeof parsed.event === 'object') {
+      const envelopeEvent = parsed.event as EnvelopeIncomingEvent['event'];
+      if (typeof envelopeEvent?.type === 'string') {
+        eventName = envelopeEvent.type;
+      }
+      const data = envelopeEvent?.data;
+      if (data && typeof data === 'object') {
+        if (data.repository && typeof data.repository === 'object') {
+          if (typeof data.repository.id === 'string') {
+            repositoryId = data.repository.id;
+          }
+          if (typeof data.repository.ingestStatus === 'string') {
+            ingestStatus = data.repository.ingestStatus;
+          }
+        }
+        if (!repositoryId && typeof (data as { repositoryId?: string }).repositoryId === 'string') {
+          repositoryId = (data as { repositoryId: string }).repositoryId;
+        }
+        if (!ingestStatus && typeof (data as { ingestStatus?: string }).ingestStatus === 'string') {
+          ingestStatus = (data as { ingestStatus: string }).ingestStatus;
+        }
+        if (data.event && typeof data.event === 'object') {
+          const nestedEvent = data.event as { repositoryId?: string; status?: string };
+          if (!repositoryId && typeof nestedEvent.repositoryId === 'string') {
+            repositoryId = nestedEvent.repositoryId;
+          }
+          if (!ingestStatus && typeof nestedEvent.status === 'string') {
+            ingestStatus = nestedEvent.status;
+          }
+        }
+      }
+    }
+
+    if (!eventName?.startsWith('repository.')) {
+      return null;
+    }
+    if (!repositoryId) {
+      logger.debug({ eventName }, 'Ignoring repository event without repository id');
+      return null;
+    }
+
+    return { eventName, repositoryId, ingestStatus };
   }
 
   private async enqueueTaggingJob(data: TaggingJobData): Promise<void> {

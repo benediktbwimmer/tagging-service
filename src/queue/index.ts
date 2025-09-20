@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Queue, QueueEvents, JobsOptions } from 'bullmq';
 import { getConfig } from '../config';
 
@@ -27,7 +28,8 @@ export function buildQueueComponents(): TaggingQueueComponents {
 }
 
 export function taggingJobId(repositoryId: string): string {
-  return `tagging:${repositoryId}`;
+  const digest = createHash('sha1').update(repositoryId).digest('hex');
+  return `tagging-${digest}`;
 }
 
 export function taggingJobOptions(overrides: JobsOptions = {}): JobsOptions {

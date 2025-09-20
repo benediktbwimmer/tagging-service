@@ -6,3 +6,6 @@ workspace
 workspace/*
 .DS_Store
 dist
+
+# Local SQLite databases
+data/tagging-service.sqlite*
