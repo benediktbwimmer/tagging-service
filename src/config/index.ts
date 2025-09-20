@@ -18,7 +18,13 @@ const configSchema = z.object({
   WORKSPACE_ROOT: z.string().min(1).default('./workspace'),
   TAGGING_CONCURRENCY: z.coerce.number().int().positive().default(2),
   TAGGING_PROMPT_TEMPLATE_PATH: z.string().min(1).default('templates/default_prompt.md'),
-  WEBHOOK_URL: z.string().url().optional(),
+  WEBHOOK_URL: z.preprocess((value) => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  }, z.string().url().optional()),
   DATABASE_PATH: z.string().min(1).default('data/tagging-service.sqlite'),
   LOG_LEVEL: z.string().optional().default('info')
 });
