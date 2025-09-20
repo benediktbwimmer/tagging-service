@@ -1,7 +1,7 @@
 import { Queue, QueueEvents, JobsOptions } from 'bullmq';
 import { getConfig } from '../config';
 
-export const TAGGING_QUEUE_NAME = 'tagging-service:jobs';
+export const TAGGING_QUEUE_NAME = 'tagging-service-jobs';
 
 export interface TaggingQueueComponents {
   queue: Queue;
