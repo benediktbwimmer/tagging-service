@@ -24,7 +24,7 @@ async function main(): Promise<void> {
       }
     },
     {
-      connection: { connectionString: config.REDIS_URL },
+      connection: { url: config.REDIS_URL },
       concurrency: config.TAGGING_CONCURRENCY
     }
   );

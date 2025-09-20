@@ -1,4 +1,5 @@
 import fastify from 'fastify';
+import type { FastifyBaseLogger } from 'fastify';
 import fastifySensible from 'fastify-sensible';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -22,13 +23,13 @@ import { TaggingJobData } from '../jobs/types';
 
 async function main(): Promise<void> {
   const config = getConfig();
-  const baseApp = fastify({ logger });
+  const baseApp = fastify({ logger: logger as unknown as FastifyBaseLogger });
   baseApp.setValidatorCompiler(validatorCompiler);
   baseApp.setSerializerCompiler(serializerCompiler);
   const app = baseApp.withTypeProvider<ZodTypeProvider>();
 
-  const { queue, queueEvents, scheduler: queueScheduler } = buildQueueComponents();
-  await queueScheduler.waitUntilReady();
+  const { queue, queueEvents } = buildQueueComponents();
+  await queue.waitUntilReady();
   await queueEvents.waitUntilReady();
   queueEvents.on('failed', ({ jobId, failedReason }) => {
     logger.error({ jobId, failedReason }, 'Queue job failed');
@@ -265,7 +266,6 @@ async function main(): Promise<void> {
     logger.info('Shutting down API server');
     manualScheduler.stop();
     await eventSubscriber.stop();
-    await queueScheduler.close();
     await queueEvents.close();
     await queue.close();
     await app.close();

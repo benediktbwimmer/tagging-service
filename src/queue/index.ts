@@ -1,4 +1,4 @@
-import { Queue, QueueEvents, QueueScheduler, JobsOptions } from 'bullmq';
+import { Queue, QueueEvents, JobsOptions } from 'bullmq';
 import { getConfig } from '../config';
 
 export const TAGGING_QUEUE_NAME = 'tagging-service:jobs';
@@ -6,12 +6,11 @@ export const TAGGING_QUEUE_NAME = 'tagging-service:jobs';
 export interface TaggingQueueComponents {
   queue: Queue;
   queueEvents: QueueEvents;
-  scheduler: QueueScheduler;
 }
 
 export function buildQueueComponents(): TaggingQueueComponents {
   const { REDIS_URL } = getConfig();
-  const connection = { connectionString: REDIS_URL };
+  const connection = { url: REDIS_URL };
 
   const queue = new Queue(TAGGING_QUEUE_NAME, {
     connection,
@@ -23,9 +22,8 @@ export function buildQueueComponents(): TaggingQueueComponents {
     }
   });
   const queueEvents = new QueueEvents(TAGGING_QUEUE_NAME, { connection });
-  const scheduler = new QueueScheduler(TAGGING_QUEUE_NAME, { connection });
 
-  return { queue, queueEvents, scheduler };
+  return { queue, queueEvents };
 }
 
 export function taggingJobId(repositoryId: string): string {
