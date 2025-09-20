@@ -21,6 +21,12 @@ interface IncomingEvent {
 
 const RECENCY_WINDOW_MS = 1000 * 60 * 60 * 12; // 12 hours
 
+type RepositoryEventListener = (event: {
+  eventName: string;
+  repositoryId: string;
+  ingestStatus?: string;
+}) => void | Promise<void>;
+
 export class EventSubscriber {
   private readonly redis = createRedisClient({ enableAutoPipelining: true });
   private listening = false;
@@ -30,7 +36,7 @@ export class EventSubscriber {
     });
   };
 
-  constructor(private readonly queue: Queue) {}
+  constructor(private readonly queue: Queue, private readonly repositoryListener?: RepositoryEventListener) {}
 
   async start(): Promise<void> {
     if (this.listening) {
@@ -73,6 +79,16 @@ export class EventSubscriber {
       return;
     }
     const { repository } = parsed.payload;
+
+    try {
+      await this.repositoryListener?.({
+        eventName: parsed.event,
+        repositoryId: repository.id,
+        ingestStatus: repository.ingestStatus
+      });
+    } catch (error) {
+      logger.warn({ error }, 'Repository event listener failed');
+    }
 
     if (parsed.event === 'repository.updated' || parsed.event === 'repository.ingestion-event') {
       if (repository.ingestStatus !== 'ready') {
